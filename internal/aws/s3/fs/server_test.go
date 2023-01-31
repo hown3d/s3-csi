@@ -1,6 +1,7 @@
 package fs
 
 import (
+    "bytes"
     "context"
     "fmt"
     aws_internal "github.com/hown3d/s3-csi/internal/aws"
@@ -8,6 +9,7 @@ import (
     internal_dockertest "github.com/hown3d/s3-csi/test/dockertest"
     "github.com/ory/dockertest/v3"
     "github.com/stretchr/testify/assert"
+    "io"
     "os"
     "path/filepath"
     "testing"
@@ -122,6 +124,61 @@ func TestCreate(t *testing.T) {
     })
 
     obj, err := cfg.S3Client.GetObject(context.Background(), minioBucket, key)
+    if assert.NoError(t, err) {
+        assert.Equal(t, int64(0), obj.ContentLength)
+    }
+}
+
+func TestWrite(t *testing.T) {
+    cfg := new(Config)
+    setupEnvironment(t, cfg)
+
+    key := "testfile"
+    name := filepath.Join(cfg.MountDir, key)
+
+    data := []byte("hello-world")
+    err := os.WriteFile(name, data, 0755)
+    assert.NoError(t, err)
+
+    obj, err := cfg.S3Client.GetObject(context.Background(), minioBucket, key)
+    if assert.NoError(t, err) {
+        assert.Equal(t, int64(len(data)), obj.ContentLength)
+        actualData, err := io.ReadAll(obj.Body)
+        if assert.NoError(t, err) {
+            assert.Equal(t, data, actualData)
+        }
+    }
+}
+
+func TestRead(t *testing.T) {
+    cfg := new(Config)
+    setupEnvironment(t, cfg)
+
+    key := "testfile"
+    data := []byte("hello-world")
+    err := cfg.S3Client.WriteObject(context.Background(), cfg.BucketName, key, bytes.NewReader(data))
+    assert.NoError(t, err)
+
+    filename := filepath.Join(cfg.MountDir, key)
+    actualData, err := os.ReadFile(filename)
+    if assert.NoError(t, err) {
+        assert.Equal(t, data, actualData)
+    }
+}
+
+func TestMkdir(t *testing.T) {
+    // broken atm, because mkdir somehow returns EINVAL on macos but the fuse impl returns 0 (Status OK)
+    //t.SkipNow()
+
+    cfg := new(Config)
+    setupEnvironment(t, cfg)
+
+    dirName := "testdir"
+    fullDirName := filepath.Join(cfg.MountDir, dirName)
+    err := os.Mkdir(fullDirName, 0755)
+    assert.NoError(t, err)
+
+    obj, err := cfg.S3Client.GetObject(context.Background(), minioBucket, fmt.Sprintf("%s/", dirName))
     if assert.NoError(t, err) {
         assert.Equal(t, int64(0), obj.ContentLength)
     }
