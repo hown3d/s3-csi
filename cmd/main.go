@@ -10,7 +10,11 @@ func main() {
     cfg := server.Config{}
     flag.StringVar(&cfg.UnixSocketPath, "socket", "/tmp/csi.sock", "unix socket to bind")
 
-    if err := server.ListenAndServe(&cfg, &server.NodeService{}, &server.ControllerService{}, &server.IdentityService{}); err != nil {
+    s, err := server.NewServer(&cfg)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if err := s.Run(); err != nil {
         log.Fatal(err)
     }
 }

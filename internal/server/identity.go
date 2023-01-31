@@ -11,17 +11,17 @@ type IdentityService struct{}
 
 var _ csipb.IdentityServer = (*IdentityService)(nil)
 
-func (i IdentityService) GetPluginInfo(ctx context.Context, request *csipb.GetPluginInfoRequest) (*csipb.GetPluginInfoResponse, error) {
+func (i *IdentityService) GetPluginInfo(ctx context.Context, request *csipb.GetPluginInfoRequest) (*csipb.GetPluginInfoResponse, error) {
     //TODO implement me
     panic("implement me")
 }
 
-func (i IdentityService) GetPluginCapabilities(ctx context.Context, request *csipb.GetPluginCapabilitiesRequest) (*csipb.GetPluginCapabilitiesResponse, error) {
+func (i *IdentityService) GetPluginCapabilities(ctx context.Context, request *csipb.GetPluginCapabilitiesRequest) (*csipb.GetPluginCapabilitiesResponse, error) {
     //TODO implement me
     panic("implement me")
 }
 
-func (i IdentityService) Probe(ctx context.Context, request *csipb.ProbeRequest) (*csipb.ProbeResponse, error) {
+func (i *IdentityService) Probe(ctx context.Context, request *csipb.ProbeRequest) (*csipb.ProbeResponse, error) {
     if isHealthy() {
         return &csipb.ProbeResponse{}, nil
     }

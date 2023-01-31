@@ -2,36 +2,52 @@ package aws
 
 import (
     "context"
-    "fmt"
     "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/config"
-    "github.com/aws/aws-sdk-go-v2/service/sts"
-    "github.com/aws/aws-sdk-go-v2/service/sts/types"
     "github.com/aws/smithy-go/logging"
     "log"
     "net/http"
+    "os"
 )
 
 func NewConfig(ctx context.Context) (aws.Config, error) {
-    return config.LoadDefaultConfig(ctx)
+    return config.LoadDefaultConfig(ctx, defaultOptions()...)
 }
 
-// NewConfigWithRoleAssumer uses parentConfig to assume roleArn with the sessionName.
+// NewConfigWithRoleAssumer uses the assumer to assume roleArn with the sessionName.
 // The credentials of the returned config will be of the assumed role
-func NewConfigWithRoleAssumer(parentConfig aws.Config, roleArn string, sessionName string) aws.Config {
-    return aws.Config{
+func NewConfigWithRoleAssumer(assumer Assumer, roleArn string, sessionName string) aws.Config {
+    cfg := aws.Config{
         Credentials: &assumedCredsReciever{
-            assumer:     newAssumer(parentConfig),
+            assumer:     assumer,
             sessionName: sessionName,
             roleArn:     roleArn,
         },
         HTTPClient: http.DefaultClient,
         Logger:     logging.StandardLogger{Logger: log.Default()},
     }
+    if awsEndpoint := os.Getenv("AWS_ENDPOINT"); awsEndpoint != "" {
+        cfg.EndpointResolverWithOptions = envVariableEndpointResolverFunc(awsEndpoint)
+    }
+    return cfg
+}
+
+func envVariableEndpointResolverFunc(endpoint string) aws.EndpointResolverWithOptionsFunc {
+    return func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+        return aws.Endpoint{URL: endpoint}, nil
+    }
+}
+
+func defaultOptions() []func(*config.LoadOptions) error {
+    var opts []func(options *config.LoadOptions) error
+    if awsEndpoint := os.Getenv("AWS_ENDPOINT"); awsEndpoint != "" {
+        opts = append(opts, config.WithEndpointResolverWithOptions(envVariableEndpointResolverFunc(awsEndpoint)))
+    }
+    return opts
 }
 
 type assumedCredsReciever struct {
-    assumer     *assumer
+    assumer     Assumer
     roleArn     string
     sessionName string
 }
@@ -39,7 +55,7 @@ type assumedCredsReciever struct {
 var _ aws.CredentialsProvider = (*assumedCredsReciever)(nil)
 
 func (s *assumedCredsReciever) Retrieve(ctx context.Context) (aws.Credentials, error) {
-    creds, err := s.assumer.assumeRole(ctx, s.roleArn, s.sessionName)
+    creds, err := s.assumer.AssumeRole(ctx, s.roleArn, s.sessionName)
     if err != nil {
         return aws.Credentials{}, err
     }
@@ -50,26 +66,4 @@ func (s *assumedCredsReciever) Retrieve(ctx context.Context) (aws.Credentials, e
         CanExpire:       true,
         Expires:         *creds.Expiration,
     }, nil
-}
-
-type assumer struct {
-    stsClient *sts.Client
-}
-
-func newAssumer(cfg aws.Config) *assumer {
-    return &assumer{
-        stsClient: sts.NewFromConfig(cfg),
-    }
-}
-
-func (a *assumer) assumeRole(ctx context.Context, roleArn string, sessionName string) (*types.Credentials, error) {
-    input := &sts.AssumeRoleInput{
-        RoleArn:         &roleArn,
-        RoleSessionName: &sessionName,
-    }
-    out, err := a.stsClient.AssumeRole(ctx, input)
-    if err != nil {
-        return nil, fmt.Errorf("error assuming role: %s: %w", roleArn, err)
-    }
-    return out.Credentials, nil
 }
