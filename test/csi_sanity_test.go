@@ -1,10 +1,10 @@
 package test
 
 import (
-    "errors"
     "fmt"
     "github.com/hown3d/s3-csi/internal/server"
     "github.com/hown3d/s3-csi/test/aws/sts"
+    internal_dockertest "github.com/hown3d/s3-csi/test/dockertest"
     "github.com/kubernetes-csi/csi-test/v5/pkg/sanity"
     g "github.com/onsi/ginkgo/v2"
     "github.com/ory/dockertest/v3"
@@ -15,25 +15,15 @@ import (
 
 const LOCALSTACK_PORT string = "4566/tcp"
 
-func startLocalStackContainer(t g.GinkgoTInterface) (container *Container) {
-    healthCheckFunc := func(resource *dockertest.Resource) error {
-        var err error
-        resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", resource.GetPort(LOCALSTACK_PORT)))
-        if err != nil {
-            return err
-        }
-        if resp.StatusCode != http.StatusOK {
-            return errors.New("not healthy")
-        }
-        return nil
-    }
+func startLocalStackContainer(t g.GinkgoTInterface) (container *internal_dockertest.Container) {
+    healthCheckFunc := internal_dockertest.HttpHealthcheck(LOCALSTACK_PORT, "_localstack/health", http.StatusOK)
     runOpts := dockertest.RunOptions{
         Repository:   "localstack/localstack",
         Tag:          "latest",
         ExposedPorts: []string{LOCALSTACK_PORT},
         Env:          []string{"PROVIDER_OVERRIDE_S3=asf", "DEBUG=1"},
     }
-    con, err := NewContainer(&runOpts, healthCheckFunc)
+    con, err := internal_dockertest.NewContainer(&runOpts, healthCheckFunc)
     if err != nil {
         t.Fatal(err)
     }
@@ -42,12 +32,12 @@ func startLocalStackContainer(t g.GinkgoTInterface) (container *Container) {
     return con
 }
 
-var localstackContainer *Container
+var localstackContainer *internal_dockertest.Container
 
 var _ = g.BeforeSuite(func() {
     t := g.GinkgoT()
     localstackContainer = startLocalStackContainer(t)
-    port := localstackContainer.resource.GetPort(LOCALSTACK_PORT)
+    port := localstackContainer.GetPort(LOCALSTACK_PORT)
     if err := os.Setenv("AWS_ENDPOINT", fmt.Sprintf("http://localhost:%s", port)); err != nil {
         t.Fatal(err)
     }
