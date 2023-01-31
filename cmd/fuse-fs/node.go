@@ -21,6 +21,26 @@ type S3Node struct {
     mu sync.RWMutex
 }
 
+func (s *S3Node) Rmdir(ctx context.Context, name string) syscall.Errno {
+    folderKey := s.key(name) + "/"
+    objs, err := s3Client.ListObjects(ctx, bucketName, s3_internal.ListObjectsWithPrefix(folderKey))
+    if err != nil {
+        return syscall.EINVAL
+    }
+    if len(objs) == 0 {
+        return syscall.ENOENT
+    }
+
+    objKeys := make([]string, len(objs))
+    for i, obj := range objs {
+        objKeys[i] = *obj.Key
+    }
+    if err := s3Client.DeleteObjects(ctx, bucketName, objKeys); err != nil {
+        return syscall.EINVAL
+    }
+    return 0
+}
+
 func (s *S3Node) newNode(ctx context.Context, name string) *fs.Inode {
     node := &S3Node{}
     stable := fs.StableAttr{
@@ -249,4 +269,6 @@ var (
 
     // Implement (handleless) Open
     _ fs.NodeOpener = (*S3Node)(nil)
+
+    _ fs.NodeRmdirer = (*S3Node)(nil)
 )

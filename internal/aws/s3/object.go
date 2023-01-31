@@ -26,10 +26,10 @@ func (c *Client) DeleteObject(ctx context.Context, bucketName string, objName st
 
 func (c *Client) DeleteObjects(ctx context.Context, bucketName string, objs []string) error {
     objIdents := make([]types.ObjectIdentifier, len(objs))
-    for _, objName := range objs {
-        objIdents = append(objIdents, types.ObjectIdentifier{
+    for i, objName := range objs {
+        objIdents[i] = types.ObjectIdentifier{
             Key: &objName,
-        })
+        }
     }
     input := &s3.DeleteObjectsInput{
         Bucket: &bucketName,
