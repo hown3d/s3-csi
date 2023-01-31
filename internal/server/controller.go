@@ -4,6 +4,7 @@ import (
     "context"
     "errors"
     "github.com/aws/aws-sdk-go-v2/service/s3/types"
+    "github.com/aws/smithy-go"
     csipb "github.com/container-storage-interface/spec/lib/go/csi"
     aws_internal "github.com/hown3d/s3-csi/internal/aws"
     s3_internal "github.com/hown3d/s3-csi/internal/aws/s3"
@@ -13,12 +14,13 @@ import (
 )
 
 var capTypes = map[csipb.ControllerServiceCapability_RPC_Type]bool{
-    csipb.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:         true,
-    csipb.ControllerServiceCapability_RPC_GET_VOLUME:                   true,
-    csipb.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT:       true,
-    csipb.ControllerServiceCapability_RPC_LIST_SNAPSHOTS:               true,
-    csipb.ControllerServiceCapability_RPC_LIST_VOLUMES:                 true,
-    csipb.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME:     true,
+    csipb.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   true,
+    csipb.ControllerServiceCapability_RPC_GET_VOLUME:             true,
+    csipb.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true,
+    csipb.ControllerServiceCapability_RPC_LIST_SNAPSHOTS:         true,
+    csipb.ControllerServiceCapability_RPC_LIST_VOLUMES:           true,
+    // publish unpublish not needed, because we don't need to do anything to the node on that step
+    csipb.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME:     false,
     csipb.ControllerServiceCapability_RPC_VOLUME_CONDITION:             false,
     csipb.ControllerServiceCapability_RPC_CLONE_VOLUME:                 false,
     csipb.ControllerServiceCapability_RPC_EXPAND_VOLUME:                false,
@@ -34,13 +36,17 @@ const (
 )
 
 type ControllerServer struct {
-    assumer aws_internal.Assumer
+    assumer  aws_internal.Assumer
+    s3Client *s3_internal.Client
 }
 
 var _ csipb.ControllerServer = (*ControllerServer)(nil)
 
-func NewControllerServer(assumer aws_internal.Assumer) (*ControllerServer, error) {
-    return &ControllerServer{assumer: assumer}, nil
+func NewControllerServer(assumer aws_internal.Assumer, client *s3_internal.Client) *ControllerServer {
+    return &ControllerServer{
+        assumer:  assumer,
+        s3Client: client,
+    }
 }
 
 func (c *ControllerServer) CreateVolume(ctx context.Context, req *csipb.CreateVolumeRequest) (*csipb.CreateVolumeResponse, error) {
@@ -59,19 +65,19 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csipb.CreateVo
     }
 
     params := req.GetParameters()
-    iamRole, ok := params[IAM_ROLE_KEY]
-    if !ok {
-        return nil, status.Error(codes.InvalidArgument, "IAM Role parameter is missing in request")
-    }
     location := params[LOCATION_KEY]
 
-    s3Client := c.s3ClientForIamRole(iamRole, req.GetName())
-
     name := strings.ToLower(req.GetName())
-    err := s3Client.CreateBucket(ctx, name, location)
+    err := c.s3Client.CreateBucket(ctx, name, location)
     var existsErr *types.BucketAlreadyExists
     if !errors.As(err, &existsErr) && err != nil {
-        // TODO: check for correct error codes
+        // TODO: move all of this into own function for reusability
+        var apiErr smithy.APIError
+        if errors.As(err, &apiErr) {
+            if apiErr.ErrorCode() == "AccessDenied" {
+                return nil, status.Error(codes.Unauthenticated, apiErr.Error())
+            }
+        }
         return nil, status.Error(codes.Internal, err.Error())
     }
     return &csipb.CreateVolumeResponse{
@@ -82,14 +88,20 @@ func (c *ControllerServer) CreateVolume(ctx context.Context, req *csipb.CreateVo
     }, nil
 }
 
-func (c *ControllerServer) DeleteVolume(ctx context.Context, request *csipb.DeleteVolumeRequest) (*csipb.DeleteVolumeResponse, error) {
+func (c *ControllerServer) DeleteVolume(ctx context.Context, req *csipb.DeleteVolumeRequest) (*csipb.DeleteVolumeResponse, error) {
     if !capabilityIsSupported(csipb.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME) {
         return nil, unimplementedError()
     }
-    panic("is supported, but not implemented")
+
+    // TODO: check volume usage (if there are fuse-servers running that use that bucket)
+    err := c.s3Client.DeleteBucket(ctx, req.GetVolumeId())
+    if err != nil {
+        return nil, status.Error(codes.Internal, err.Error())
+    }
+    return &csipb.DeleteVolumeResponse{}, nil
 }
 
-func (c *ControllerServer) ControllerPublishVolume(ctx context.Context, request *csipb.ControllerPublishVolumeRequest) (*csipb.ControllerPublishVolumeResponse, error) {
+func (c *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csipb.ControllerPublishVolumeRequest) (*csipb.ControllerPublishVolumeResponse, error) {
     if !capabilityIsSupported(csipb.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME) {
         return nil, unimplementedError()
     }
@@ -112,7 +124,7 @@ func (c *ControllerServer) ListVolumes(ctx context.Context, request *csipb.ListV
     if !capabilityIsSupported(csipb.ControllerServiceCapability_RPC_LIST_VOLUMES) {
         return nil, unimplementedError()
     }
-    panic("is supported, but not implemented")
+    panic("Implement")
 }
 
 func (c *ControllerServer) GetCapacity(ctx context.Context, request *csipb.GetCapacityRequest) (*csipb.GetCapacityResponse, error) {

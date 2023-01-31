@@ -1,55 +1,22 @@
 package test
 
 import (
-    "fmt"
+    "context"
+    "github.com/hown3d/s3-csi/internal/aws"
+    "github.com/hown3d/s3-csi/internal/aws/s3"
     "github.com/hown3d/s3-csi/internal/server"
+    "github.com/hown3d/s3-csi/test/aws/localstack"
     "github.com/hown3d/s3-csi/test/aws/sts"
-    internal_dockertest "github.com/hown3d/s3-csi/test/dockertest"
     "github.com/kubernetes-csi/csi-test/v5/pkg/sanity"
     g "github.com/onsi/ginkgo/v2"
-    "github.com/ory/dockertest/v3"
-    "net/http"
-    "os"
     "path/filepath"
 )
 
-const LOCALSTACK_PORT string = "4566/tcp"
-
-func startLocalStackContainer(t g.GinkgoTInterface) (container *internal_dockertest.Container) {
-    healthCheckFunc := internal_dockertest.HttpHealthcheck(LOCALSTACK_PORT, "_localstack/health", http.StatusOK)
-    runOpts := dockertest.RunOptions{
-        Repository:   "localstack/localstack",
-        Tag:          "latest",
-        ExposedPorts: []string{LOCALSTACK_PORT},
-        Env:          []string{"PROVIDER_OVERRIDE_S3=asf", "DEBUG=1"},
-    }
-    con, err := internal_dockertest.NewContainer(&runOpts, healthCheckFunc)
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    t.Log("localstack is running")
-    return con
-}
-
-var localstackContainer *internal_dockertest.Container
+var localstackCon *localstack.Container
+var err error
 
 var _ = g.BeforeSuite(func() {
-    t := g.GinkgoT()
-    localstackContainer = startLocalStackContainer(t)
-    port := localstackContainer.GetPort(LOCALSTACK_PORT)
-    if err := os.Setenv("AWS_ENDPOINT", fmt.Sprintf("http://localhost:%s", port)); err != nil {
-        t.Fatal(err)
-    }
-    if err := os.Setenv("AWS_REGION", "eu-central-1"); err != nil {
-        t.Fatal(err)
-    }
-    if err := os.Setenv("AWS_ACCESS_KEY_ID", "test"); err != nil {
-        t.Fatal(err)
-    }
-    if err := os.Setenv("AWS_SECRET_ACCESS_KEY", "test"); err != nil {
-        t.Fatal(err)
-    }
+    localstackCon, err = localstack.New()
 })
 
 var _ = g.Describe("CSI Sanity Test", func() {
@@ -68,7 +35,11 @@ var _ = g.Describe("CSI Sanity Test", func() {
             UnixSocketPath: addr,
             Protocol:       "tcp",
         }
-        cs, err := server.NewControllerServer(sts.NopAssumer{})
+        awsCfg, err := aws.NewConfig(context.Background())
+        if err != nil {
+            t.Fatal(err)
+        }
+        cs := server.NewControllerServer(sts.NopAssumer{}, s3.NewClient(awsCfg))
         grpcServer, err = server.NewServerWithCustomServiceImpls(&serverConf, &server.NodeService{}, cs, &server.IdentityService{})
         if err != nil {
             t.Fatal(err)
@@ -100,7 +71,7 @@ var _ = g.Describe("CSI Sanity Test", func() {
 })
 
 var _ = g.AfterSuite(func() {
-    err := localstackContainer.Delete()
+    err := localstackCon.Delete()
     if err != nil {
         g.GinkgoT().Logf("error cleaning up localstack container: %s", err)
     }

@@ -1,18 +1,20 @@
 package fs
 
 import (
+    "context"
     "fmt"
     "github.com/hanwen/go-fuse/v2/fs"
     "github.com/hanwen/go-fuse/v2/fuse"
-    s3_internal "github.com/hown3d/s3-csi/internal/aws/s3"
+    "github.com/hown3d/s3-csi/internal/aws/s3"
     "log"
     "time"
 )
 
 type Config struct {
     MountDir   string
-    S3Client   *s3_internal.Client
+    S3Client   *s3.Client
     BucketName string
+    Debug      bool
 }
 
 type Server struct {
@@ -32,18 +34,19 @@ func NewServer(cfg *Config) (*Server, error) {
         AttrTimeout:  &one,
         MountOptions: fuse.MountOptions{
             // Set to true to see how the file system works.
-            Debug:  true,
+            Debug:  cfg.Debug,
             Name:   "s3-fs",
             FsName: "s3-fs",
         },
         Logger: logger,
     }
+    bucket, err := cfg.S3Client.GetBucket(context.Background(), cfg.BucketName)
+    if err != nil {
+        return nil, fmt.Errorf("error getting bucket: %w", err)
+    }
 
     root := &s3Node{
-        s3Embedded: &s3Embedded{
-            s3Client:   cfg.S3Client,
-            bucketName: cfg.BucketName,
-        },
+        bucket: bucket,
     }
     rawFS := fs.NewNodeFS(root, options)
 

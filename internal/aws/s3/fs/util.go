@@ -1,8 +1,12 @@
 package fs
 
 import (
+    "context"
+    "fmt"
     "github.com/hanwen/go-fuse/v2/fuse"
+    "github.com/hown3d/s3-csi/internal/aws/s3"
     "hash/fnv"
+    "log"
     "strings"
 )
 
@@ -32,4 +36,23 @@ func rootDirAttrs() *fuse.AttrOut {
             Mode: fuse.S_IFDIR,
         },
     }
+}
+
+func setFuseAttr(ctx context.Context, obj *s3.Object, out *fuse.Attr) error {
+    key := obj.Key
+    objAttrs, err := obj.GetAttrs(ctx)
+    if err != nil {
+        return err
+    }
+    out.Ino = uniqueInode(key)
+    out.Mode = keyToFileMode(key)
+    out.Size = objAttrs.Size
+    out.SetTimes(objAttrs.AccessTime, objAttrs.ModifyTime, objAttrs.ChangeTime)
+    return nil
+}
+
+func printError(method string, err error) {
+    logger := log.Default()
+    logger.SetPrefix(fmt.Sprintf("%s: ", method))
+    logger.Println(err)
 }
