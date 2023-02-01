@@ -4,8 +4,9 @@ import (
     "bytes"
     "context"
     "fmt"
-    aws_internal "github.com/hown3d/s3-csi/internal/aws"
-    s3_internal "github.com/hown3d/s3-csi/internal/aws/s3"
+    "github.com/aws/aws-sdk-go-v2/service/s3/types"
+    "github.com/hown3d/s3-csi/internal/aws"
+    "github.com/hown3d/s3-csi/internal/aws/s3"
     "github.com/hown3d/s3-csi/test/aws/localstack"
     "github.com/stretchr/testify/assert"
     "io"
@@ -15,7 +16,6 @@ import (
 )
 
 func setupServer(t *testing.T, cfg *Config) {
-
     server, err := NewServer(cfg)
     assert.NoError(t, err)
 
@@ -35,25 +35,35 @@ func setupServer(t *testing.T, cfg *Config) {
     })
 }
 
-func startLocalstack(t *testing.T) {
+func TestMain(m *testing.M) {
+    cleanup, err := startLocalstack()
+    defer cleanup()
+    if err != nil {
+        cleanup()
+        return
+    }
+    exitCode := m.Run()
+    cleanup()
+    os.Exit(exitCode)
+}
+
+func startLocalstack() (cleanup func(), err error) {
     con, err := localstack.New()
     if err != nil {
-        t.Fatal(err)
+        return func() {}, err
+    }
+    cleanup = func() {
+        con.Delete()
     }
     if err := con.SetAWSEnvVariables(); err != nil {
-        t.Fatal(err)
+        return cleanup, err
     }
-
-    t.Cleanup(func() {
-        con.Delete()
-    })
+    return cleanup, err
 }
 
 // setupEnvironment setups the environment and fills the created config in cfg
-func setupEnvironment(t *testing.T, cfg *Config) *s3_internal.Bucket {
-    startLocalstack(t)
-
-    awsCfg, err := aws_internal.NewConfig(context.Background())
+func setupEnvironment(t *testing.T, cfg *Config) *s3.Bucket {
+    awsCfg, err := aws.NewConfig(context.Background())
     assert.NoError(t, err)
 
     dir, err := os.MkdirTemp("", t.Name())
@@ -65,13 +75,23 @@ func setupEnvironment(t *testing.T, cfg *Config) *s3_internal.Bucket {
     bucketName := "testbucket"
 
     cfg.MountDir = dir
-    cfg.S3Client = s3_internal.NewClient(awsCfg)
+    cfg.S3Client = s3.NewClient(awsCfg)
     cfg.BucketName = bucketName
 
     bucket, err := cfg.S3Client.CreateBucket(context.Background(), bucketName, "")
-    if !assert.NoError(t, err) {
-        t.Fatal(err)
+    if err != nil {
+        var alreadyExists *types.BucketAlreadyExists
+        if !assert.ErrorAs(t, err, &alreadyExists) {
+            t.Fatal(err)
+        }
+        bucket, err = cfg.S3Client.GetBucket(context.Background(), bucketName)
+        if err != nil {
+            t.Fatal(err)
+        }
     }
+    t.Cleanup(func() {
+        bucket.Empty(context.Background())
+    })
     setupServer(t, cfg)
     return bucket
 }
@@ -131,7 +151,6 @@ func TestWrite(t *testing.T) {
 
 func TestRead(t *testing.T) {
     cfg := new(Config)
-    cfg.Debug = true
     bucket := setupEnvironment(t, cfg)
 
     ctx := context.Background()

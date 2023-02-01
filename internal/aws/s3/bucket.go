@@ -19,8 +19,8 @@ func (b *Bucket) Delete(ctx context.Context) error {
     input := &s3.DeleteBucketInput{
         Bucket: &b.Name,
     }
-    // clean bucket because only empty buckets can be deleted
-    err := b.empty(ctx)
+    // clean bucket because only Empty buckets can be deleted
+    err := b.Empty(ctx)
     if err != nil {
         return fmt.Errorf("cleaning bucket %s: %w", b.Name, err)
     }
@@ -31,7 +31,7 @@ func (b *Bucket) Delete(ctx context.Context) error {
     return nil
 }
 
-func (b *Bucket) empty(ctx context.Context) error {
+func (b *Bucket) Empty(ctx context.Context) error {
     objs, err := b.ListObjects(ctx, nil)
     if err != nil {
         return err
@@ -67,10 +67,11 @@ func (b *Bucket) ListObjects(ctx context.Context, opts *ListOpts) ([]*Object, er
     }
     awsObjs := out.Contents
 
-    objs := make([]*Object, len(awsObjs))
+    objs := make([]*Object, 0, len(awsObjs))
     for _, awsObj := range awsObjs {
         newObj := &Object{
             Key:      *awsObj.Key,
+            Bucket:   b.Name,
             s3Client: b.s3Client,
         }
         objs = append(objs, newObj)
