@@ -21,8 +21,8 @@ runs:
         config: ${{ inputs.melange-config }}
         repository-path: /work/packages
         empty-workspace: false
-#        sign-with-temporary-key: true
-#        signing-key-path: /work/melange.rsa
+        signing-key-path: /work/melange.rsa
+        sign-with-temporary-key: true
 
     - name: Create temp copy of /work directory (used in next step)
       shell: bash
@@ -34,6 +34,6 @@ runs:
         archs: amd64
         config: ${{ inputs.apko-config }}
         base-tag: ghcr.io/${{ github.repository }}/${{ inputs.variant }}
-#        keyring-append: /work/melange.rsa.pub
+        keyring-append: /work/melange.rsa.pub
         automount-src: .apko-automount
         automount-dest: /work
