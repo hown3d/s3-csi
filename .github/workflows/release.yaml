@@ -1,5 +1,5 @@
-name: go
-concurrency: go
+name: release
+concurrency: release
 on:
   schedule:
     - cron: '0 0 * * *'
@@ -8,7 +8,7 @@ on:
       - main
 jobs:
   build:
-    name: Release images
+    name: Release fuse-fs image
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -16,7 +16,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v3
-      - uses: ./.github/actions/release-variant
+      - uses: ./.github/actions/release
         with:
           variant: fuse-fs
           archs: amd64

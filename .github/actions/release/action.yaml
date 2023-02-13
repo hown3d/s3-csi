@@ -1,9 +1,15 @@
 name: release
 inputs:
+  melange-config:
+    description: "config for melange"
+    default: melange.yaml
+  apko-config:
+    description: "config apko"
+    default: apko.yaml
   variant:
+    description: "name of the release variant"
     required: true
-  archs:
-    required: true
+description: "builds a release with melange and apko"
 runs:
   using: composite
   steps:
@@ -11,7 +17,7 @@ runs:
 
     - uses: chainguard-dev/actions/melange-build@main
       with:
-        archs: ${{ inputs.archs }}
+        archs: amd64
         config: ${{ inputs.melange-config }}
         signing-key-path: /work/melange.rsa
         repository-path: /work/packages
@@ -25,7 +31,7 @@ runs:
 
     - uses: distroless/actions/apko-snapshot@main
       with:
-        archs: ${{ inputs.archs }}
+        archs: amd64
         config: ${{ inputs.apko-config }}
         base-tag: ghcr.io/${{ github.repository }}/${{ inputs.variant }}
         keyring-append: /work/melange.rsa.pub
