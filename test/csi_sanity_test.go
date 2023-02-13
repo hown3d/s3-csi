@@ -53,9 +53,6 @@ var _ = g.Describe("CSI Sanity Test", func() {
         config = sanity.NewTestConfig()
         // Set configuration options as needed
         config.Address = addr
-        config.TestVolumeParameters = map[string]string{
-            server.IAM_ROLE_KEY: "test123",
-        }
         config.TargetPath = filepath.Join(t.TempDir(), "csi-mount")
         config.StagingPath = filepath.Join(t.TempDir(), "csi-staging")
 

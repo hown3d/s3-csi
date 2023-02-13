@@ -6,6 +6,7 @@ import (
     "github.com/aws/aws-sdk-go-v2/service/sts"
     csipb "github.com/container-storage-interface/spec/lib/go/csi"
     "github.com/hown3d/s3-csi/internal/aws"
+    "github.com/hown3d/s3-csi/internal/aws/s3"
     internal_sts "github.com/hown3d/s3-csi/internal/aws/sts"
     "golang.org/x/sync/errgroup"
     "google.golang.org/grpc"
@@ -32,7 +33,7 @@ func NewServer(cfg *Config) (*NonBlockingGrpcServer, error) {
     }
 
     ns := &NodeService{}
-    cs := NewControllerServer(internal_sts.NewAssumer(awsCfg))
+    cs := NewControllerServer(internal_sts.NewAssumer(awsCfg), s3.NewClient(awsCfg))
     is := NewIdentityService(sts.NewFromConfig(awsCfg))
 
     return NewServerWithCustomServiceImpls(cfg, ns, cs, is)

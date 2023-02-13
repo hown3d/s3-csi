@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: s3-fuse
+  labels:
+    name: s3-fuse
+spec:
+  containers:
+  - name: s3-fuse
+    image: github.com/hown3d/s3-csi/fuse
+    args:
+      - "-s3-bucket=test"
+      - "-mount-dir=/tmp/s3-fs-mnt"
+      - "-debug"
+      - "-v=5"
+    env:
+      - name: AWS_ENDPOINT
+        value: "http://localstack-fuse-fs:4566"
+      - name: AWS_SECRET_ACCESS_KEY
+        value: "test"
+      - name: AWS_ACCESS_KEY_ID
+        value: "test"
+    imagePullPolicy: IfNotPresent
+    securityContext:
+      privileged: true
+    volumeMounts:
+      - mountPath: /dev/fuse
+        name: fuse
+      - mountPath: /tmp/s3-fs-mnt
+        name: fs
+        mountPropagation: Bidirectional
+  volumes:
+    - name: fuse
+      hostPath:
+        path: /dev/fuse
+    - name: fs
+      hostPath:
+        path: /var/lib/kubelet/plugins/s3-csi/fuse-fs/test
+        type: DirectoryOrCreate

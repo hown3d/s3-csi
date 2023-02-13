@@ -2,12 +2,12 @@ package fs
 
 import (
     "context"
-    "errors"
     "fmt"
     "github.com/hanwen/go-fuse/v2/fs"
     "github.com/hanwen/go-fuse/v2/fuse"
     "github.com/hown3d/s3-csi/internal/aws/s3"
     "io"
+    "k8s.io/klog/v2"
     "os"
     "path/filepath"
     "strconv"
@@ -19,61 +19,6 @@ type s3File struct {
     mu        sync.Mutex
     cacheFile *os.File
     obj       *s3.Object
-}
-
-func (s *s3File) Setattr(ctx context.Context, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-
-    //root node has key set to "", so it doesnt map to a key in s3
-    //if s.EmbeddedInode().IsRoot() {
-    //    out = rootDirAttrs()
-    //    return 0
-    //}
-
-    attrs := &s3.ObjectAttrs{}
-    modifyTime, valid := in.SetAttrInCommon.GetMTime()
-    if valid {
-        attrs.ModifyTime = &modifyTime
-    }
-
-    accessTime, valid := in.SetAttrInCommon.GetATime()
-    if valid {
-        attrs.AccessTime = &accessTime
-    }
-
-    changeTime, valid := in.SetAttrInCommon.GetCTime()
-    if valid {
-        attrs.ChangeTime = &changeTime
-    }
-
-    if err := s.obj.SetAttrs(ctx, attrs); err != nil {
-        printError("Setattr", err)
-        return syscall.EIO
-    }
-    return 0
-
-}
-
-func (s *s3File) Getattr(ctx context.Context, out *fuse.AttrOut) syscall.Errno {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-
-    //if s.EmbeddedInode().IsRoot() {
-    //    out = rootDirAttrs()
-    //    return 0
-    //}
-
-    err := setFuseAttr(ctx, s.obj, &out.Attr)
-    if err != nil {
-        var notFoundErr *s3.ErrObjectNotFound
-        if errors.As(err, &notFoundErr) {
-            return syscall.ENOENT
-        }
-        printError("Gettattr", err)
-        return syscall.EIO
-    }
-    return 0
 }
 
 func newS3FileHandler(obj *s3.Object) (*s3File, error) {
@@ -112,19 +57,27 @@ func (s *s3File) read(ctx context.Context, dest []byte, off int64) (read int, er
         Start: off,
         End:   int64(end),
     }
+    klog.V(5).Infof("reading from object %s from start %d until end %d", s.obj.Key, off, end)
     r, err := s.obj.Read(ctx, readRange)
     if err != nil {
         return 0, fmt.Errorf("error getting object from s3: %s", err)
     }
 
-    n, err := io.ReadFull(r, dest)
-    if err != nil {
-        return 0, fmt.Errorf("error reading from s3: %s", err)
+    for {
+        n, err := r.Read(dest)
+        if err != nil {
+            if err == io.EOF {
+                break
+            }
+            return 0, fmt.Errorf("error reading from s3: %s", err)
+        }
+        read += n
     }
-    return n, nil
+    return read, nil
 }
 
 func (s *s3File) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
+    klog.V(5).Infof("writing object with key: %s at offset %d", s.obj.Key, off)
     s.mu.Lock()
     defer s.mu.Unlock()
 
@@ -147,8 +100,10 @@ func (s *s3File) Write(ctx context.Context, data []byte, off int64) (written uin
 }
 
 func (s *s3File) Flush(ctx context.Context) syscall.Errno {
+    klog.V(5).Infof("removing cachefile for object %s", s.obj.Key)
     err := os.Remove(s.cacheFile.Name())
-    if err != nil {
+    // flush could be called twice, so if the cache file is already deleted, return ok
+    if err != nil && !os.IsNotExist(err) {
         printError("Flush", fmt.Errorf("error deleting cacheFile: %w", err))
         return syscall.EINVAL
     }
@@ -157,10 +112,8 @@ func (s *s3File) Flush(ctx context.Context) syscall.Errno {
 
 // Interface compliance
 var (
-    _ fs.FileSetattrer = (*s3File)(nil)
-    _ fs.FileGetattrer = (*s3File)(nil)
-    _ fs.FileFlusher   = (*s3File)(nil)
-    _ fs.FileWriter    = (*s3File)(nil)
+    _ fs.FileFlusher = (*s3File)(nil)
+    _ fs.FileWriter  = (*s3File)(nil)
 
     _ fs.FileReader = (*s3File)(nil)
 )

@@ -7,6 +7,7 @@ import (
     "github.com/hanwen/go-fuse/v2/fs"
     "github.com/hanwen/go-fuse/v2/fuse"
     "github.com/hown3d/s3-csi/internal/aws/s3"
+    "k8s.io/klog/v2"
     "log"
     "path/filepath"
     "strings"
@@ -17,30 +18,84 @@ import (
 type s3Node struct {
     fs.Inode
 
-    bucket *s3.Bucket
+    client     *s3.Client
+    bucketName string
     // When file systems are mutable, all access must use
     // synchronization.
     mu sync.RWMutex
 }
 
-func (s *s3Node) Rmdir(ctx context.Context, name string) syscall.Errno {
-    folderKey := s.key(name) + "/"
+func (s *s3Node) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    attrs := &s3.ObjectAttrs{}
+    modifyTime, valid := in.SetAttrInCommon.GetMTime()
+    if valid {
+        attrs.ModifyTime = &modifyTime
+    }
+
+    accessTime, valid := in.SetAttrInCommon.GetATime()
+    if valid {
+        attrs.AccessTime = &accessTime
+    }
+
+    changeTime, valid := in.SetAttrInCommon.GetCTime()
+    if valid {
+        attrs.ChangeTime = &changeTime
+    }
+
+    key := s.key("")
+    obj := s.client.NewObject(s.bucketName, key)
+    if err := obj.SetAttrs(ctx, attrs); err != nil {
+        var notFoundErr *s3.ErrObjectNotFound
+        if errors.As(err, &notFoundErr) {
+            return syscall.ENOENT
+        }
+        printError("Setattr", err)
+        return syscall.EIO
+    }
+    return 0
+}
+
+func (s *s3Node) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    key := s.key("")
+    obj := s.client.NewObject(s.bucketName, key)
+    err := setFuseAttr(ctx, obj, &out.Attr)
+    if err != 0 {
+        printError("Getattr", err)
+        return err
+    }
+    return 0
+}
+
+// folderObjs returns the list of objects in this directory
+func (s *s3Node) folderObjs(ctx context.Context, folderKey string) ([]*s3.Object, syscall.Errno) {
     listOpts := s3.ListOpts{
         Prefix: folderKey,
     }
-    objs, err := s.bucket.ListObjects(ctx, &listOpts)
+    klog.V(5).Infof("listing objects with prefix: %s", folderKey)
+    objs, err := s.client.ListObjects(ctx, s.bucketName, &listOpts)
     if err != nil {
-        return syscall.EINVAL
+        return nil, syscall.EINVAL
     }
     if len(objs) == 0 {
-        return syscall.ENOENT
+        return nil, syscall.ENOENT
+    }
+    return objs, 0
+}
+
+func (s *s3Node) Rmdir(ctx context.Context, name string) syscall.Errno {
+    folderKey := s.folderKey(name)
+    objs, err := s.folderObjs(ctx, folderKey)
+    if err != 0 {
+        return err
     }
 
-    objKeys := make([]string, 0, len(objs))
-    for _, obj := range objs {
-        objKeys = append(objKeys, obj.Key)
-    }
-    if err := s.bucket.DeleteObjects(ctx, objKeys); err != nil {
+    if err := s.client.DeleteObjects(ctx, s.bucketName, objs); err != nil {
         return syscall.EINVAL
     }
     return 0
@@ -48,8 +103,10 @@ func (s *s3Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 
 func (s *s3Node) newInode(ctx context.Context, key string) *fs.Inode {
     node := &s3Node{
-        bucket: s.bucket,
+        bucketName: s.bucketName,
+        client:     s.client,
     }
+
     stable := fs.StableAttr{
         Mode: keyToFileMode(key),
         Ino:  uniqueInode(key),
@@ -61,10 +118,9 @@ func (s *s3Node) newInode(ctx context.Context, key string) *fs.Inode {
 
 func (s *s3Node) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
     key := s.key("")
-    obj, err := s.bucket.GetObject(ctx, key)
-    if err != nil {
-        log.Printf("error getting object: %s", err)
-        return nil, 0, syscall.EIO
+    obj := s.client.NewObject(s.bucketName, key)
+    if !obj.Exists(ctx) {
+        return nil, 0, syscall.ENOENT
     }
     s3F, err := newS3FileHandler(obj)
     if err != nil {
@@ -78,28 +134,25 @@ func (s *s3Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
     s.mu.RLock()
     defer s.mu.RUnlock()
 
-    key := s.key("")
-    listOpts := s3.ListOpts{
-        Prefix: key,
-    }
-    objs, err := s.bucket.ListObjects(ctx, &listOpts)
-    if err != nil {
-        log.Printf("error: %#v", err)
-        // TODO: handle errors correctly
-        return nil, syscall.ENOENT
+    folderKey := s.folderKey("")
+    objs, err := s.folderObjs(ctx, folderKey)
+    if err != 0 {
+        return nil, err
     }
 
     dirs := make([]fuse.DirEntry, 0, len(objs))
     for _, obj := range objs {
-        dirKey := fmt.Sprintf("%s/", key)
-        if strings.HasPrefix(obj.Key, dirKey) && obj.Key != dirKey {
-            d := fuse.DirEntry{
-                Name: obj.Key,
-                Ino:  uniqueInode(obj.Key),
-                Mode: keyToFileMode(obj.Key),
-            }
-            dirs = append(dirs, d)
+        if obj.Key == ROOT_KEY {
+            klog.V(5).Infof("skipping root object: %s", ROOT_KEY)
+            continue
         }
+        d := fuse.DirEntry{
+            Name: strings.ReplaceAll(obj.Key, ROOT_KEY, ""),
+            Ino:  uniqueInode(obj.Key),
+            Mode: keyToFileMode(obj.Key),
+        }
+        klog.V(5).Infof("adding dir entry: %s", d)
+        dirs = append(dirs, d)
     }
     return fs.NewListDirStream(dirs), 0
 }
@@ -109,34 +162,20 @@ func (s *s3Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
     defer s.mu.RUnlock()
 
     key := s.key(name)
-    var (
-        obj *s3.Object
-        err error
-    )
-    obj, err = s.bucket.GetObject(ctx, key)
-    if err != nil {
-        var notFoundErr *s3.ErrObjectNotFound
-        if !errors.As(err, &notFoundErr) {
-            printError("Lookup", err)
-            return nil, syscall.EIO
-        }
+    obj := s.client.NewObject(s.bucketName, key)
+    if !obj.Exists(ctx) {
         // since fuse removes the slashes on the name, retry lookup with slash suffixed to make sure we find folders
-        key = key + "/"
-        obj, err = s.bucket.GetObject(ctx, key)
-        // clear error of previous invocation
-        notFoundErr = nil
-        if errors.As(err, &notFoundErr) {
+        key = s.folderKey(name)
+        obj.Key = key
+        if !obj.Exists(ctx) {
             return nil, syscall.ENOENT
         }
     }
 
     newInode := s.newInode(ctx, key)
-    err = setFuseAttr(ctx, obj, &out.Attr)
-    if err != nil {
-        var notFoundErr *s3.ErrObjectNotFound
-        if errors.As(err, &notFoundErr) {
-            return nil, syscall.ENOENT
-        }
+    err := setFuseAttr(ctx, obj, &out.Attr)
+    if err != 0 {
+        return nil, err
     }
 
     if success := s.AddChild(name, newInode, true); !success {
@@ -152,7 +191,21 @@ func (s *s3Node) Access(ctx context.Context, mask uint32) syscall.Errno {
 // key returns the filepath to the root node to use as the object name in s3
 func (s *s3Node) key(childName string) string {
     nodePath := s.Path(s.Root())
-    return filepath.Join(nodePath, childName)
+    // can't use ROOT_KEY inside filepath.Join
+    // because if nodePath and childName are empty,
+    // the trailing / of ROOT_KEY would be removed
+    return ROOT_KEY + filepath.Join(nodePath, childName)
+}
+
+// folderKey retrieves the key for a s3 object that is used as a folder.
+// fuse removes the trailing slash
+// must be readded for server to recognize name as folder
+func (s *s3Node) folderKey(childName string) string {
+    key := s.key(childName)
+    if !strings.HasSuffix(key, "/") {
+        key = key + "/"
+    }
+    return key
 }
 
 func (s *s3Node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
@@ -160,7 +213,8 @@ func (s *s3Node) Create(ctx context.Context, name string, flags uint32, mode uin
     defer s.mu.Unlock()
 
     childKey := s.key(name)
-    obj, err := s.bucket.CreateObject(ctx, childKey, nil)
+    obj := s.client.NewObject(s.bucketName, childKey)
+    err := obj.Create(ctx, nil)
     if err != nil {
         printError("Create", fmt.Errorf("error creating object: %w", err))
         return nil, nil, 0, syscall.EIO
@@ -172,9 +226,9 @@ func (s *s3Node) Create(ctx context.Context, name string, flags uint32, mode uin
     }
     node = s.newInode(ctx, childKey)
 
-    if err := setFuseAttr(ctx, obj, &out.Attr); err != nil {
+    if err := setFuseAttr(ctx, obj, &out.Attr); err != 0 {
         printError("Create", fmt.Errorf("error setting fuse attrs: %w", err))
-        return nil, nil, 0, syscall.EIO
+        return nil, nil, 0, err
     }
     return node, s3F, 0, 0
 }
@@ -184,18 +238,15 @@ func (s *s3Node) Unlink(ctx context.Context, name string) syscall.Errno {
     defer s.mu.Unlock()
 
     childKey := s.key(name)
-    obj, err := s.bucket.GetObject(ctx, childKey)
+    obj := s.client.NewObject(s.bucketName, childKey)
+    klog.V(5).Infof("deleting object %s", childKey)
+    err := obj.Delete(ctx)
     if err != nil {
         var notFoundErr *s3.ErrObjectNotFound
         if errors.As(err, &notFoundErr) {
             return syscall.ENOENT
         }
-        printError("Unlink", fmt.Errorf("error getting object: %w", err))
-        return syscall.EIO
-    }
-    err = obj.Delete(ctx)
-    if err != nil {
-        printError("Unlink", fmt.Errorf("error deleting object"))
+        printError("Unlink", fmt.Errorf("error deleting object: %w", err))
         return syscall.EIO
     }
     return 0
@@ -207,16 +258,13 @@ func (s *s3Node) Rename(ctx context.Context, name string, newParent fs.InodeEmbe
 
     oldChildKey := s.key(name)
     newChildKey := s.key(newName)
-    obj, err := s.bucket.GetObject(ctx, oldChildKey)
-    if err != nil {
+    klog.V(5).Infof("renaming object %s to %s", oldChildKey, newChildKey)
+    obj := s.client.NewObject(s.bucketName, oldChildKey)
+    if err := obj.Move(ctx, newChildKey); err != nil {
         var notFoundErr *s3.ErrObjectNotFound
         if errors.As(err, &notFoundErr) {
             return syscall.ENOENT
         }
-        printError("Rename", fmt.Errorf("error getting object: %w", err))
-        return syscall.EIO
-    }
-    if err := obj.Move(ctx, newChildKey); err != nil {
         printError("Rename", fmt.Errorf("error moving object: %w", err))
         return syscall.EIO
     }
@@ -230,16 +278,15 @@ func (s *s3Node) Rename(ctx context.Context, name string, newParent fs.InodeEmbe
 func (s *s3Node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
     s.mu.Lock()
     defer s.mu.Unlock()
-    // fuse removes the trailing slash
-    // must be readded for server to recognize name as folder
-    childKey := s.key(name) + "/"
+    folderKey := s.folderKey(name)
 
-    obj, err := s.bucket.CreateObject(ctx, childKey, nil)
+    obj := s.client.NewObject(s.bucketName, folderKey)
+    err := obj.Create(ctx, nil)
     if err != nil {
         printError("Mkdir", fmt.Errorf("error creating object: %w", err))
         return nil, syscall.EIO
     }
-    if err := setFuseAttr(ctx, obj, &out.Attr); err != nil {
+    if err := setFuseAttr(ctx, obj, &out.Attr); err != 0 {
         printError("Mkdir", fmt.Errorf("error setting fuse attrs: %w", err))
         return nil, syscall.EIO
     }
@@ -252,9 +299,12 @@ var (
     _ fs.NodeLookuper  = (*s3Node)(nil)
     _ fs.NodeReaddirer = (*s3Node)(nil)
 
-    _ fs.NodeAccesser = (*s3Node)(nil)
+    _ fs.NodeSetattrer = (*s3Node)(nil)
 
     _ fs.NodeMkdirer = (*s3Node)(nil)
+
+    _ fs.NodeSetattrer = (*s3Node)(nil)
+    _ fs.NodeGetattrer = (*s3Node)(nil)
 
     _ fs.NodeUnlinker = (*s3Node)(nil)
     _ fs.NodeRenamer  = (*s3Node)(nil)

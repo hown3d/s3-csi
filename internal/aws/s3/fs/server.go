@@ -6,7 +6,11 @@ import (
     "github.com/hanwen/go-fuse/v2/fs"
     "github.com/hanwen/go-fuse/v2/fuse"
     "github.com/hown3d/s3-csi/internal/aws/s3"
+    "k8s.io/klog/v2"
     "log"
+    "os"
+    "os/signal"
+    "syscall"
     "time"
 )
 
@@ -18,63 +22,73 @@ type Config struct {
 }
 
 type Server struct {
-    fs         fuse.RawFileSystem
-    mountDir   string
     fuseServer *fuse.Server
-    opts       *fs.Options
+    killSigs   chan<- os.Signal
 }
+
+const ROOT_KEY = "root/"
 
 func NewServer(cfg *Config) (*Server, error) {
     one := time.Second
     logger := log.Default()
-    logger.SetPrefix("s3-fuse")
+    logger.SetPrefix("s3-fuse: ")
 
     options := &fs.Options{
         EntryTimeout: &one,
         AttrTimeout:  &one,
         MountOptions: fuse.MountOptions{
             // Set to true to see how the file system works.
-            Debug:  cfg.Debug,
-            Name:   "s3-fs",
-            FsName: "s3-fs",
+            Debug:       cfg.Debug,
+            Name:        "s3-fs",
+            FsName:      "s3-fs",
+            DirectMount: true,
         },
         Logger: logger,
     }
-    bucket, err := cfg.S3Client.GetBucket(context.Background(), cfg.BucketName)
+    bucket := cfg.S3Client.NewBucket(cfg.BucketName)
+    if !bucket.Exists(context.Background()) {
+        return nil, fmt.Errorf("bucket %s does not exist", cfg.BucketName)
+    }
+
+    rootObj := cfg.S3Client.NewObject(cfg.BucketName, ROOT_KEY)
+    err := rootObj.Create(context.Background(), nil)
     if err != nil {
-        return nil, fmt.Errorf("error getting bucket: %w", err)
+        return nil, fmt.Errorf("creating root object: %w", err)
     }
 
     root := &s3Node{
-        bucket: bucket,
+        bucketName: bucket.Name,
+        client:     cfg.S3Client,
     }
     rawFS := fs.NewNodeFS(root, options)
 
+    err = os.MkdirAll(cfg.MountDir, 0700)
+    if !os.IsExist(err) && err != nil {
+        return nil, fmt.Errorf("mountdir could not be created: %w", err)
+    }
+    fuseServer, err := fuse.NewServer(rawFS, cfg.MountDir, &options.MountOptions)
+    if err != nil {
+        return nil, err
+    }
+
+    killSigs := make(chan os.Signal)
+    signal.Notify(killSigs, syscall.SIGTERM, syscall.SIGKILL)
+    go func() {
+        // Block until a signal is received.
+        s := <-killSigs
+        klog.Infof("Got signal: %s, unmounting filesystem", s)
+        err := fuseServer.Unmount()
+        if err != nil {
+            klog.Error("error unmounting fs: %s", err)
+        }
+    }()
     return &Server{
-        fs:       rawFS,
-        mountDir: cfg.MountDir,
-        opts:     options,
+        fuseServer: fuseServer,
     }, nil
 }
 
-func (s *Server) createAndMount() error {
-    server, err := fuse.NewServer(s.fs, s.mountDir, &s.opts.MountOptions)
-    if err != nil {
-        return err
-    }
-    s.fuseServer = server
-    return nil
-}
-
-func (s *Server) serve() {
-    s.fuseServer.Serve()
-}
-
 func (s *Server) start() error {
-    if err := s.createAndMount(); err != nil {
-        return fmt.Errorf("creating fuse server and mounting to %s: %w", s.mountDir, err)
-    }
-    s.serve()
+    s.fuseServer.Serve()
     return nil
 }
 

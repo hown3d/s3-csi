@@ -3,13 +3,13 @@ package fs
 import (
     "bytes"
     "context"
-    "fmt"
     "github.com/aws/aws-sdk-go-v2/service/s3/types"
     "github.com/hown3d/s3-csi/internal/aws"
     "github.com/hown3d/s3-csi/internal/aws/s3"
     "github.com/hown3d/s3-csi/test/aws/localstack"
     "github.com/stretchr/testify/assert"
     "io"
+    "log"
     "os"
     "path/filepath"
     "testing"
@@ -19,10 +19,7 @@ func setupServer(t *testing.T, cfg *Config) {
     server, err := NewServer(cfg)
     assert.NoError(t, err)
 
-    err = server.createAndMount()
-    assert.NoError(t, err)
-
-    go server.serve()
+    go server.start()
 
     err = server.waitMount()
     assert.NoError(t, err)
@@ -37,9 +34,9 @@ func setupServer(t *testing.T, cfg *Config) {
 
 func TestMain(m *testing.M) {
     cleanup, err := startLocalstack()
-    defer cleanup()
     if err != nil {
         cleanup()
+        log.Print(err)
         return
     }
     exitCode := m.Run()
@@ -62,7 +59,7 @@ func startLocalstack() (cleanup func(), err error) {
 }
 
 // setupEnvironment setups the environment and fills the created config in cfg
-func setupEnvironment(t *testing.T, cfg *Config) *s3.Bucket {
+func setupEnvironment(t *testing.T, cfg *Config) {
     awsCfg, err := aws.NewConfig(context.Background())
     assert.NoError(t, err)
 
@@ -78,14 +75,11 @@ func setupEnvironment(t *testing.T, cfg *Config) *s3.Bucket {
     cfg.S3Client = s3.NewClient(awsCfg)
     cfg.BucketName = bucketName
 
-    bucket, err := cfg.S3Client.CreateBucket(context.Background(), bucketName, "")
+    bucket := cfg.S3Client.NewBucket(bucketName)
+    err = bucket.Create(context.Background(), "")
     if err != nil {
         var alreadyExists *types.BucketAlreadyExists
         if !assert.ErrorAs(t, err, &alreadyExists) {
-            t.Fatal(err)
-        }
-        bucket, err = cfg.S3Client.GetBucket(context.Background(), bucketName)
-        if err != nil {
             t.Fatal(err)
         }
     }
@@ -93,15 +87,14 @@ func setupEnvironment(t *testing.T, cfg *Config) *s3.Bucket {
         bucket.Empty(context.Background())
     })
     setupServer(t, cfg)
-    return bucket
 }
 
 func TestCreate(t *testing.T) {
     cfg := new(Config)
-    bucket := setupEnvironment(t, cfg)
+    setupEnvironment(t, cfg)
 
-    key := "testfile"
-    name := filepath.Join(cfg.MountDir, key)
+    filename := "testfile"
+    name := filepath.Join(cfg.MountDir, filename)
     f, err := os.Create(name)
     if !assert.NoError(t, err) {
         t.Fatal(err)
@@ -112,8 +105,8 @@ func TestCreate(t *testing.T) {
     })
 
     ctx := context.Background()
-    obj, err := bucket.GetObject(ctx, key)
-    assert.NoError(t, err)
+    obj := cfg.S3Client.NewObject(cfg.BucketName, objKey(filename))
+    assert.True(t, obj.Exists(ctx))
 
     r, err := obj.Read(ctx, nil)
     assert.NoError(t, err)
@@ -126,18 +119,18 @@ func TestCreate(t *testing.T) {
 
 func TestWrite(t *testing.T) {
     cfg := new(Config)
-    bucket := setupEnvironment(t, cfg)
+    setupEnvironment(t, cfg)
 
-    key := "testfile"
-    name := filepath.Join(cfg.MountDir, key)
+    filename := "testfile"
+    name := filepath.Join(cfg.MountDir, filename)
 
     data := []byte("hello-world")
     err := os.WriteFile(name, data, 0755)
     assert.NoError(t, err)
 
     ctx := context.Background()
-    obj, err := bucket.GetObject(ctx, key)
-    assert.NoError(t, err)
+    obj := cfg.S3Client.NewObject(cfg.BucketName, objKey(filename))
+    assert.True(t, obj.Exists(ctx))
 
     r, err := obj.Read(ctx, nil)
     assert.NoError(t, err)
@@ -151,13 +144,14 @@ func TestWrite(t *testing.T) {
 
 func TestRead(t *testing.T) {
     cfg := new(Config)
-    bucket := setupEnvironment(t, cfg)
+    setupEnvironment(t, cfg)
 
     ctx := context.Background()
-    key := "testfile"
+    key := objKey("testfile")
     data := []byte("hello-world")
 
-    obj, err := bucket.CreateObject(ctx, key, nil)
+    obj := cfg.S3Client.NewObject(cfg.BucketName, key)
+    err := obj.Create(ctx, nil)
     assert.NoError(t, err)
 
     err = obj.Write(ctx, bytes.NewReader(data), nil)
@@ -170,27 +164,29 @@ func TestRead(t *testing.T) {
     }
 }
 
-func TestMkdir(t *testing.T) {
-    // broken atm, because mkdir somehow returns EINVAL on macos but the fuse impl returns 0 (Status OK)
-    t.SkipNow()
-
+func TestReadDir(t *testing.T) {
     cfg := new(Config)
-    bucket := setupEnvironment(t, cfg)
+    setupEnvironment(t, cfg)
 
-    dirName := "testdir"
-    fullDirName := filepath.Join(cfg.MountDir, dirName)
-    err := os.Mkdir(fullDirName, 0755)
+    folderName := objKey("testFolder")
+    dirName := filepath.Join(cfg.MountDir, folderName)
+    files := []string{
+        filepath.Join(dirName, "test1"),
+        filepath.Join(dirName, "test2"),
+    }
+    for _, f := range files {
+        fd, err := os.Create(f)
+        assert.NoError(t, err)
+        fd.Close()
+    }
+
+    entries, err := os.ReadDir(dirName)
     assert.NoError(t, err)
+    for _, entry := range entries {
+        assert.Contains(t, files, entry.Name())
+    }
+}
 
-    ctx := context.Background()
-    obj, err := bucket.GetObject(ctx, fmt.Sprintf("%s/", dirName))
-    assert.NoError(t, err)
-
-    r, err := obj.Read(ctx, nil)
-    assert.NoError(t, err)
-
-    data, err := io.ReadAll(r)
-    assert.NoError(t, err)
-
-    assert.Equal(t, 0, len(data))
+func objKey(filename string) string {
+    return "/" + filename
 }

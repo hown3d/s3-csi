@@ -2,12 +2,13 @@ package fs
 
 import (
     "context"
-    "fmt"
+    "errors"
     "github.com/hanwen/go-fuse/v2/fuse"
     "github.com/hown3d/s3-csi/internal/aws/s3"
     "hash/fnv"
-    "log"
+    "k8s.io/klog/v2"
     "strings"
+    "syscall"
 )
 
 func keyToFileMode(key string) uint32 {
@@ -38,21 +39,25 @@ func rootDirAttrs() *fuse.AttrOut {
     }
 }
 
-func setFuseAttr(ctx context.Context, obj *s3.Object, out *fuse.Attr) error {
+func setFuseAttr(ctx context.Context, obj *s3.Object, out *fuse.Attr) syscall.Errno {
     key := obj.Key
     objAttrs, err := obj.GetAttrs(ctx)
     if err != nil {
-        return err
+        var notFoundErr *s3.ErrObjectNotFound
+        if errors.As(err, &notFoundErr) {
+            klog.V(5).Infof("%s: %s", "setFuseAttr", notFoundErr)
+            return syscall.ENOENT
+        }
+        printError("setFuseAttr", err)
+        return syscall.EIO
     }
     out.Ino = uniqueInode(key)
     out.Mode = keyToFileMode(key)
     out.Size = objAttrs.Size
     out.SetTimes(objAttrs.AccessTime, objAttrs.ModifyTime, objAttrs.ChangeTime)
-    return nil
+    return 0
 }
 
 func printError(method string, err error) {
-    logger := log.Default()
-    logger.SetPrefix(fmt.Sprintf("%s: ", method))
-    logger.Println(err)
+    klog.Errorf("%s: %s", method, err)
 }
