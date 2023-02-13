@@ -13,6 +13,10 @@ description: "builds a release with melange and apko"
 runs:
   using: composite
   steps:
+    - name: Setup workspace
+      shell: bash
+      run: |
+        sudo rm -rf /work && sudo mkdir /work
     - uses: actions/checkout@v3
 
     - uses: chainguard-dev/actions/melange-build@main
