@@ -32,7 +32,7 @@ runs:
     - uses: distroless/actions/apko-snapshot@main
       with:
         archs: amd64
-        config: /work/${{ inputs.apko-config }}
+        config: ${{ inputs.apko-config }}
         base-tag: ghcr.io/${{ github.repository }}/${{ inputs.variant }}
 #        keyring-append: /work/melange.rsa.pub
         automount-src: .apko-automount
