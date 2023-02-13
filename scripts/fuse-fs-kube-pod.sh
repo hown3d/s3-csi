@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && /bin/pwd )"
-IMAGE_NAME="github.com/hown3d/s3-csi/fuse"
-. $DIR/fuse-fs-docker-build.sh
+. $DIR/fuse-fs/docker-build.sh
+
 
 helm repo add localstack-charts https://localstack.github.io/helm-charts
 helm upgrade -i --wait localstack-fuse-fs localstack-charts/localstack \
@@ -12,7 +12,7 @@ helm upgrade -i --wait localstack-fuse-fs localstack-charts/localstack \
   --set enableStartupScripts=true \
   --set debug=true
 
-kind load docker-image $IMAGE_NAME
+kind load image-archive packages/fuse-fs-output.tar
 
 kubectl delete pod s3-fuse || true
 kubectl apply -f $DIR/fuse-pod.yaml

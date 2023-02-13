@@ -1,0 +1,24 @@
+name: go
+concurrency: go
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  push:
+    branches:
+      - main
+jobs:
+  build:
+    name: Release images
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/release-variant
+        with:
+          variant: fuse-fs
+          archs: amd64
+          melange-config: deploy/fuse-fs/melange.yaml
+          apko-config: deploy/fuse-fs/apko.yaml

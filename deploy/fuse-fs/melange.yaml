@@ -1,0 +1,31 @@
+package:
+  name: fuse-fs
+  version: 0.1.0
+  description: fuse filesystem for s3
+  target-architecture:
+    - amd64
+  copyright:
+    - license: Apache-2.0
+      paths:
+        - "*"
+
+environment:
+  contents:
+    repositories:
+      - https://dl-cdn.alpinelinux.org/alpine/edge/main
+      - https://dl-cdn.alpinelinux.org/alpine/edge/community
+    packages:
+      - alpine-baselayout-data
+      - ca-certificates-bundle
+      - busybox
+      - go
+
+pipeline:
+  - uses: go/build
+    with:
+      modroot: .
+      packages: ./cmd/fuse-fs/main.go
+      output: /usr/bin/fuse-fs
+#  - name: Build Go application
+#    runs: |
+#      CGO_ENABLED=0 go build -o "${{targets.destdir}}/usr/bin/fuse-fs" ./cmd/fuse-fs/main.go

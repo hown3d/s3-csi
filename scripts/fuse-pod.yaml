@@ -7,7 +7,7 @@ metadata:
 spec:
   containers:
   - name: s3-fuse
-    image: github.com/hown3d/s3-csi/fuse
+    image: ghcr.io/hown3d/s3-csi/fuse-fs
     args:
       - "-s3-bucket=test"
       - "-mount-dir=/tmp/s3-fs-mnt"
