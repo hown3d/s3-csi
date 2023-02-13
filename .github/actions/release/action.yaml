@@ -19,10 +19,10 @@ runs:
       with:
         archs: amd64
         config: ${{ inputs.melange-config }}
-        signing-key-path: /work/melange.rsa
         repository-path: /work/packages
         empty-workspace: false
         sign-with-temporary-key: true
+        signing-key-path: /work/melange.rsa
 
     - name: Create temp copy of /work directory (used in next step)
       shell: bash

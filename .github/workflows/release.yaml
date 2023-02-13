@@ -19,6 +19,5 @@ jobs:
       - uses: ./.github/actions/release
         with:
           variant: fuse-fs
-          archs: amd64
-          melange-config: deploy/fuse-fs/melange.yaml
-          apko-config: deploy/fuse-fs/apko.yaml
+          melange-config: ${{ github.workspace }}/deploy/fuse-fs/melange.yaml
+          apko-config: ${{ github.workspace }}/deploy/fuse-fs/apko.yaml
