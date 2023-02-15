@@ -36,6 +36,6 @@ jobs:
       - uses: actions/checkout@v3
       - uses: ./.github/actions/container-build
         with:
-          variant: ${{ matrix.variant }}
-          melange-config: melange.${{ matrix.variant}}.yaml
-          apko-config: apko.${{ matrix.variant}}.yaml
+          variant: ${{ matrix.variants }}
+          melange-config: melange.${{ matrix.variants }}.yaml
+          apko-config: apko.${{ matrix.variants }}.yaml
