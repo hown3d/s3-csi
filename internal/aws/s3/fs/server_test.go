@@ -145,7 +145,8 @@ func TestRead(t *testing.T) {
 	setupEnvironment(t, cfg)
 
 	ctx := context.Background()
-	key := objKey("testfile")
+	name := "testfile"
+	key := objKey(name)
 	data := []byte("hello-world")
 
 	obj := cfg.S3Client.NewObject(cfg.BucketName, key)
@@ -155,7 +156,7 @@ func TestRead(t *testing.T) {
 	err = obj.Write(ctx, bytes.NewReader(data), nil)
 	failIfErr(t, err)
 
-	filename := filepath.Join(cfg.MountDir, key)
+	filename := filepath.Join(cfg.MountDir, name)
 	actualData, err := os.ReadFile(filename)
 	failIfErr(t, err)
 	assert.Equal(t, data, actualData)
@@ -165,7 +166,7 @@ func TestReadDir(t *testing.T) {
 	cfg := new(Config)
 	setupEnvironment(t, cfg)
 
-	folderName := objKey("testFolder")
+	folderName := "testfolder"
 	dirName := filepath.Join(cfg.MountDir, folderName)
 	files := []string{
 		filepath.Join(dirName, "test1"),
@@ -173,8 +174,9 @@ func TestReadDir(t *testing.T) {
 	}
 	for _, f := range files {
 		fd, err := os.Create(f)
-		assert.NoError(t, err)
-		fd.Close()
+		if assert.NoError(t, err) {
+			fd.Close()
+		}
 	}
 
 	entries, err := os.ReadDir(dirName)
