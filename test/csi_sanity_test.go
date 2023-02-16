@@ -60,7 +60,7 @@ var _ = g.Describe("CSI Sanity Test", func() {
 	})
 
 	g.AfterEach(func() {
-		grpcServer.Stop()
+		grpcServer.ForceStop()
 	})
 
 	g.Describe("CSI sanity", func() {
