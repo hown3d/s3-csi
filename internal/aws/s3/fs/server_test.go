@@ -185,7 +185,7 @@ func TestReadDir(t *testing.T) {
 }
 
 func objKey(filename string) string {
-	return "/" + filename
+	return ROOT_KEY + filename
 }
 
 func failIfErr(t *testing.T, err error) {
