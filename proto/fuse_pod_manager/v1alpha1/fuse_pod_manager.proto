@@ -11,12 +11,26 @@ service FusePodManagerService {
 }
 
 message ListFusePodsRequest {}
-message ListFusePodsResponse {}
+message ListFusePodsResponse {
+    repeated FusePod pods = 1;
+}
 message CreateFusePodRequest {
     string bucket = 1;
     string mount_path = 2;
+    string volume_id = 3;
 }
-message CreateFusePodResponse {}
-message DeleteFusePodRequest {}
+
+message CreateFusePodResponse {
+    string name = 1;
+}
+message DeleteFusePodRequest {
+    string name = 1;
+}
 message DeleteFusePodResponse {}
 
+message FusePod {
+    string name = 1;
+    string bucket = 2;
+    string mount_path = 3;
+    string volume_id = 4;
+}
