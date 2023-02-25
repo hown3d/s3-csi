@@ -21,8 +21,6 @@ rules:
       - patch
     resources:
       - pods
-    resourceNames:
-      - "fuse-fs*"
     apiGroups:
       - ""
 

@@ -16,8 +16,9 @@ message ListFusePodsResponse {
 }
 message CreateFusePodRequest {
     string bucket = 1;
-    string mount_path = 2;
-    string volume_id = 3;
+    string host_mount_path = 2;
+    string image = 3;
+    string volume_id = 4;
 }
 
 message CreateFusePodResponse {
@@ -31,6 +32,6 @@ message DeleteFusePodResponse {}
 message FusePod {
     string name = 1;
     string bucket = 2;
-    string mount_path = 3;
-    string volume_id = 4;
+    string host_mount_path = 3;
+    string volume_id = 5;
 }

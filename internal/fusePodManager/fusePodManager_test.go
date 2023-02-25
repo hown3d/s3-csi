@@ -1,10 +1,8 @@
 package fusePodManager
 
 import (
-    "fmt"
     pb "github.com/hown3d/s3-csi/proto/gen/fuse_pod_manager/v1alpha1"
     corev1 "k8s.io/api/core/v1"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "reflect"
     "testing"
 )
@@ -21,30 +19,45 @@ func Test_parsePodToFusePodMessage(t *testing.T) {
         {
             name: "missing annotations",
             args: args{
-                pod: generateTestPod("test123", "", "", "test-pod"),
+                pod: generatePod(&podConfig{
+                    podName:     "test-pod",
+                    hostMntPath: "test123",
+                }),
             },
-            want: &pb.FusePod{Name: "test-pod", MountPath: "test123"},
+            want: &pb.FusePod{
+                Name:          "test-pod",
+                HostMountPath: "test123",
+            },
         },
         {
             name: "happy path",
             args: args{
-                pod: generateTestPod("test123", "test", "volume123", "test-pod"),
+                pod: generatePod(&podConfig{
+                    podName:     "test-pod",
+                    volumeId:    "volume123",
+                    bucket:      "test",
+                    hostMntPath: "test123",
+                }),
             },
             want: &pb.FusePod{
-                Name:      "test-pod",
-                VolumeId:  "volume123",
-                Bucket:    "test",
-                MountPath: "test123",
+                Name:          "test-pod",
+                VolumeId:      "volume123",
+                Bucket:        "test",
+                HostMountPath: "test123",
             },
         },
 
         {
             name: "missing mountPath",
             args: args{
-                pod: generateTestPod("", "test", "volume123", "test-pod"),
+                pod: generatePod(&podConfig{
+                    podName:  "test123",
+                    volumeId: "volume123",
+                    bucket:   "test",
+                }),
             },
             want: &pb.FusePod{
-                Name:     "test-pod",
+                Name:     "test123",
                 VolumeId: "volume123",
                 Bucket:   "test",
             },
@@ -56,34 +69,5 @@ func Test_parsePodToFusePodMessage(t *testing.T) {
                 t.Errorf("parsePodToFusePodMessage() = %v, want %v", got, tt.want)
             }
         })
-    }
-}
-
-func generateTestPod(mountDir string, bucketAnnotationValue string, volumeIdAnnotationValue string, podName string) *corev1.Pod {
-    annotations := map[string]string{}
-    if bucketAnnotationValue != "" {
-        annotations[bucketAnnotation] = bucketAnnotationValue
-    }
-    if volumeIdAnnotationValue != "" {
-        annotations[volumeIdAnnotation] = volumeIdAnnotationValue
-    }
-
-    var mountDirArg string
-    if mountDir != "" {
-        mountDirArg = fmt.Sprintf("-mount-dir=%s", mountDir)
-    }
-    return &corev1.Pod{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:        podName,
-            Annotations: annotations,
-        },
-        Spec: corev1.PodSpec{
-            Containers: []corev1.Container{
-                {
-                    Name: containerName,
-                    Args: []string{mountDirArg},
-                },
-            },
-        },
     }
 }

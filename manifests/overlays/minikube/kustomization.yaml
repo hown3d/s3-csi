@@ -7,6 +7,6 @@ images:
 - digest: sha256:29a77e2d87fdc0754bf840171d3855609c8bef6e0d9cc861925ddbcd5658234b
   name: fuse-pod-manager
   newName: localhost:5000/hown3d/s3-csi/fuse-pod-manager-62df30a06f109ecae59dbd298f763fd3
-- digest: sha256:7043494aaac91dc012e8ff114ffa54b5151cb4dd63536e7e26d4393aa67d600c
+- digest: sha256:7b8830e55d203e359ffe5d898b319aa2f54358470f4980c824eee506bff8137d
   name: ghcr.io/hown3d/s3-csi/fuse-pod-manager
-  newName: localhost:5000/hown3d/s3-csi/fuse-pod-manager-62df30a06f109ecae59dbd298f763fd3
+  newName: localhost:5000/hown3d/s3-csi/fuse-pod-manager-13dda0619dff72f8be102b562a53e736

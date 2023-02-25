@@ -2,6 +2,7 @@ package fusePodManager
 
 import (
     "context"
+    "fmt"
     pb "github.com/hown3d/s3-csi/proto/gen/fuse_pod_manager/v1alpha1"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -10,7 +11,7 @@ import (
     "k8s.io/apimachinery/pkg/fields"
     corev1Client "k8s.io/client-go/kubernetes/typed/core/v1"
     "k8s.io/klog/v2"
-    "strings"
+    "k8s.io/utils/pointer"
 )
 
 type fusePodManagerService struct {
@@ -21,6 +22,9 @@ const (
     bucketAnnotation   string = "hown3d.s3-csi.bucket"
     volumeIdAnnotation string = "hown3d.s3-csi.volumeId"
     containerName      string = "fuse-fs"
+    containerMntPath   string = "/tmp/s3-fs-mnt"
+
+    hostVolumeName = "fs"
 )
 
 var (
@@ -62,27 +66,128 @@ func parsePodToFusePodMessage(pod *corev1.Pod) *pb.FusePod {
         fusePod.VolumeId = volumeId
     }
 
-    for _, container := range pod.Spec.Containers {
-        if container.Name != containerName {
+    for _, vol := range pod.Spec.Volumes {
+        if vol.Name != hostVolumeName {
             continue
         }
-        for _, arg := range container.Args {
-            if strings.Contains(arg, "mount-dir") {
-                mountFlagSplit := strings.Split(arg, "=")
-                if len(mountFlagSplit) != 2 {
-                    klog.Warningf("container fuse-fs does not contain valid mount-dir flag")
-                    break
-                }
-                fusePod.MountPath = mountFlagSplit[1]
-            }
+        if vol.HostPath == nil {
+            klog.Warningf("hostPath for host volume is nil, skipping")
         }
+        fusePod.HostMountPath = vol.HostPath.Path
     }
     return fusePod
 }
 
 func (s fusePodManagerService) CreateFusePod(ctx context.Context, request *pb.CreateFusePodRequest) (*pb.CreateFusePodResponse, error) {
-    //TODO implement me
-    panic("implement me")
+    volumeId := request.VolumeId
+    if volumeId == "" {
+        return nil, status.Errorf(codes.InvalidArgument, "volumeId cant be empty")
+    }
+    podImage := request.Image
+    if podImage == "" {
+        return nil, status.Errorf(codes.InvalidArgument, "podImage cant be empty")
+    }
+
+    bucket := request.Bucket
+    if bucket == "" {
+        return nil, status.Errorf(codes.InvalidArgument, "bucket cant be empty")
+    }
+
+    hostMntPath := request.HostMountPath
+    if hostMntPath == "" {
+        return nil, status.Errorf(codes.InvalidArgument, "hostMntPath cant be empty")
+    }
+
+    podName := fmt.Sprintf("fuse-fs-%s", volumeId)
+
+    config := &podConfig{
+        podName:     podName,
+        podImage:    podImage,
+        volumeId:    volumeId,
+        bucket:      bucket,
+        hostMntPath: hostMntPath,
+    }
+    pod := generatePod(config)
+
+    _, err := s.podClient.Create(ctx, pod, metav1.CreateOptions{})
+    if err != nil {
+        return nil, status.Errorf(codes.Internal, "creating pod: %s", err)
+    }
+    return &pb.CreateFusePodResponse{
+        Name: podName,
+    }, nil
+}
+
+type podConfig struct {
+    podName     string
+    podImage    string
+    volumeId    string
+    bucket      string
+    hostMntPath string
+}
+
+func generatePod(config *podConfig) *corev1.Pod {
+    // store as variable to allow pointer reference
+    var (
+        mountPropBidirectional = corev1.MountPropagationBidirectional
+        hostPathDirOrCreate    = corev1.HostPathDirectoryOrCreate
+    )
+
+    return &corev1.Pod{
+        ObjectMeta: metav1.ObjectMeta{
+            Name: config.podName,
+            Annotations: map[string]string{
+                volumeIdAnnotation: config.volumeId,
+                bucketAnnotation:   config.bucket,
+            },
+        },
+        Spec: corev1.PodSpec{
+            Containers: []corev1.Container{
+                {
+                    Name:  containerName,
+                    Image: config.podImage,
+                    Args: []string{
+                        fmt.Sprintf("-s3-bucket=%s", config.bucket),
+                        fmt.Sprintf("-mount-dir=%s", containerMntPath),
+                    },
+                    SecurityContext: &corev1.SecurityContext{
+                        Privileged: pointer.Bool(true),
+                    },
+                    VolumeMounts: []corev1.VolumeMount{
+                        {
+                            Name:      "fuse",
+                            MountPath: "/dev/fuse",
+                        },
+                        {
+                            Name:             "fs",
+                            MountPath:        containerMntPath,
+                            MountPropagation: &mountPropBidirectional,
+                        },
+                    },
+                },
+            },
+            Volumes: []corev1.Volume{
+                {
+                    Name: "fuse",
+                    VolumeSource: corev1.VolumeSource{
+                        HostPath: &corev1.HostPathVolumeSource{
+                            Path: "/dev/fuse",
+                        },
+                    },
+                },
+
+                {
+                    Name: "fs",
+                    VolumeSource: corev1.VolumeSource{
+                        HostPath: &corev1.HostPathVolumeSource{
+                            Path: config.hostMntPath,
+                            Type: &hostPathDirOrCreate,
+                        },
+                    },
+                },
+            },
+        },
+    }
 }
 
 func (s fusePodManagerService) DeleteFusePod(ctx context.Context, request *pb.DeleteFusePodRequest) (*pb.DeleteFusePodResponse, error) {
