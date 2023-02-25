@@ -1,0 +1,31 @@
+package:
+  name: fuse-fs
+  version: 0.1.0
+  description: manager for fuse filesystem pods
+  target-architecture:
+    - amd64
+  copyright:
+    - license: Apache-2.0
+      paths:
+        - "*"
+  dependencies:
+    runtime:
+      - fuse
+
+environment:
+  contents:
+    repositories:
+      - https://dl-cdn.alpinelinux.org/alpine/edge/main
+      - https://dl-cdn.alpinelinux.org/alpine/edge/community
+    packages:
+      - alpine-baselayout-data
+      - ca-certificates-bundle
+      - busybox
+      - go
+
+pipeline:
+  - uses: go/build
+    with:
+      modroot: .
+      packages: ./cmd/fuse-pod-manager/main.go
+      output: /usr/bin/fuse-pod-manager
