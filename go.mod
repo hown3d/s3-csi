@@ -14,13 +14,15 @@ require (
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/hanwen/go-fuse/v2 v2.2.0
 	github.com/kubernetes-csi/csi-test/v5 v5.0.0
-	github.com/onsi/ginkgo/v2 v2.4.0
-	github.com/onsi/gomega v1.23.0
+	github.com/onsi/ginkgo/v2 v2.8.1
+	github.com/onsi/gomega v1.27.1
 	github.com/ory/dockertest/v3 v3.9.1
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/sync v0.1.0
 	google.golang.org/grpc v1.52.0
 	google.golang.org/protobuf v1.28.1
+	k8s.io/api v0.26.1
+	k8s.io/apimachinery v0.26.1
 	k8s.io/client-go v0.26.1
 	k8s.io/klog/v2 v2.80.1
 )
@@ -84,11 +86,11 @@ require (
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
-	golang.org/x/net v0.4.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20221014153046-6fdb5e3db783 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/term v0.3.0 // indirect
-	golang.org/x/text v0.5.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/term v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
@@ -96,8 +98,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.26.1 // indirect
-	k8s.io/apimachinery v0.26.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
 	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
