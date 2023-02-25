@@ -5,9 +5,9 @@ import (
     "k8s.io/client-go/tools/clientcmd"
 )
 
-func NewClientSet(kubeconfig *string) (*kubernetes.Clientset, error) {
+func NewClientSet(kubeconfig string) (*kubernetes.Clientset, error) {
     // use the current context in kubeconfig
-    config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+    config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
     if err != nil {
         return nil, err
     }

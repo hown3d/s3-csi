@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../base
+
+images:
+- digest: sha256:29a77e2d87fdc0754bf840171d3855609c8bef6e0d9cc861925ddbcd5658234b
+  name: fuse-pod-manager
+  newName: localhost:5000/hown3d/s3-csi/fuse-pod-manager-62df30a06f109ecae59dbd298f763fd3
+- digest: sha256:7043494aaac91dc012e8ff114ffa54b5151cb4dd63536e7e26d4393aa67d600c
+  name: ghcr.io/hown3d/s3-csi/fuse-pod-manager
+  newName: localhost:5000/hown3d/s3-csi/fuse-pod-manager-62df30a06f109ecae59dbd298f763fd3

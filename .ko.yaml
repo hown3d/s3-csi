@@ -1,0 +1,10 @@
+defaultBaseImage: cgr.dev/chainguard/static
+
+builds:
+  - id: fuse-pod-manager
+    main: ./cmd/fuse-pod-manager
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -extldflags "-static"
