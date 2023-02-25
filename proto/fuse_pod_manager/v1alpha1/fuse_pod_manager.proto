@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package fuse_pod_manager.v1alpha1;
+
+
+// Generated according to https://cloud.google.com/apis/design/standard_methods
+service FusePodManagerService {
+    rpc ListFusePods(ListFusePodsRequest) returns (ListFusePodsResponse);
+    rpc CreateFusePod(CreateFusePodRequest) returns  (CreateFusePodResponse);
+    rpc DeleteFusePod(DeleteFusePodRequest) returns (DeleteFusePodResponse);
+}
+
+message ListFusePodsRequest {}
+message ListFusePodsResponse {}
+message CreateFusePodRequest {
+    string bucket = 1;
+    string mount_path = 2;
+}
+message CreateFusePodResponse {}
+message DeleteFusePodRequest {}
+message DeleteFusePodResponse {}
+

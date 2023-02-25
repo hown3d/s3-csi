@@ -57,7 +57,7 @@ func (s *s3File) read(ctx context.Context, dest []byte, off int64) (read int, er
         Start: off,
         End:   int64(end),
     }
-    klog.V(5).Infof("reading from object %s from start %d until end %d", s.obj.Key, off, end)
+    klog.Infof("reading from object %s from start %d until end %d", s.obj.Key, off, end)
     r, err := s.obj.Read(ctx, readRange)
     if err != nil {
         return 0, fmt.Errorf("error getting object from s3: %s", err)
@@ -77,7 +77,7 @@ func (s *s3File) read(ctx context.Context, dest []byte, off int64) (read int, er
 }
 
 func (s *s3File) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
-    klog.V(5).Infof("writing object with key: %s at offset %d", s.obj.Key, off)
+    klog.Infof("writing object with key: %s at offset %d", s.obj.Key, off)
     s.mu.Lock()
     defer s.mu.Unlock()
 
@@ -100,7 +100,7 @@ func (s *s3File) Write(ctx context.Context, data []byte, off int64) (written uin
 }
 
 func (s *s3File) Flush(ctx context.Context) syscall.Errno {
-    klog.V(5).Infof("removing cachefile for object %s", s.obj.Key)
+    klog.Infof("removing cachefile for object %s", s.obj.Key)
     err := os.Remove(s.cacheFile.Name())
     // flush could be called twice, so if the cache file is already deleted, return ok
     if err != nil && !os.IsNotExist(err) {
