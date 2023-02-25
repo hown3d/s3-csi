@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        variants: ["fuse-fs"]
+        variants: ["fuse-fs", "fuse-pod-manager"]
     permissions:
       id-token: write
       packages: write
