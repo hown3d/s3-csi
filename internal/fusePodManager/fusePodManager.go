@@ -12,6 +12,7 @@ import (
     corev1Client "k8s.io/client-go/kubernetes/typed/core/v1"
     "k8s.io/klog/v2"
     "k8s.io/utils/pointer"
+    "strings"
 )
 
 type fusePodManagerService struct {
@@ -25,6 +26,8 @@ const (
     containerMntPath   string = "/tmp/s3-fs-mnt"
 
     hostVolumeName = "fs"
+
+    podNamePrefix = "fuse-fs-"
 )
 
 var (
@@ -44,6 +47,7 @@ func (s fusePodManagerService) ListFusePods(ctx context.Context, _ *pb.ListFuseP
     fusePods := make([]*pb.FusePod, 0, len(podList.Items))
     for _, pod := range podList.Items {
         fusePod := parsePodToFusePodMessage(&pod)
+        klog.Infof("found fuse pod: %#v", fusePod)
         fusePods = append(fusePods, fusePod)
     }
     return &pb.ListFusePodsResponse{
@@ -51,9 +55,13 @@ func (s fusePodManagerService) ListFusePods(ctx context.Context, _ *pb.ListFuseP
     }, nil
 }
 
+func podName(volumeId string) string {
+    return podNamePrefix + volumeId
+}
+
 func parsePodToFusePodMessage(pod *corev1.Pod) *pb.FusePod {
     fusePod := &pb.FusePod{
-        Name: pod.Name,
+        Name: strings.TrimPrefix(pod.Name, podNamePrefix),
     }
 
     bucket, ok := pod.Annotations[bucketAnnotation]
@@ -98,15 +106,15 @@ func (s fusePodManagerService) CreateFusePod(ctx context.Context, request *pb.Cr
         return nil, status.Errorf(codes.InvalidArgument, "hostMntPath cant be empty")
     }
 
-    podName := fmt.Sprintf("fuse-fs-%s", volumeId)
-
+    name := podName(volumeId)
     config := &podConfig{
-        podName:     podName,
+        podName:     name,
         podImage:    podImage,
         volumeId:    volumeId,
         bucket:      bucket,
         hostMntPath: hostMntPath,
     }
+    klog.Infof("creating fuse pod with config: %#v", config)
     pod := generatePod(config)
 
     _, err := s.podClient.Create(ctx, pod, metav1.CreateOptions{})
@@ -114,7 +122,7 @@ func (s fusePodManagerService) CreateFusePod(ctx context.Context, request *pb.Cr
         return nil, status.Errorf(codes.Internal, "creating pod: %s", err)
     }
     return &pb.CreateFusePodResponse{
-        Name: podName,
+        Name: name,
     }, nil
 }
 
@@ -140,6 +148,7 @@ func generatePod(config *podConfig) *corev1.Pod {
                 volumeIdAnnotation: config.volumeId,
                 bucketAnnotation:   config.bucket,
             },
+            Labels: labels,
         },
         Spec: corev1.PodSpec{
             Containers: []corev1.Container{
@@ -191,6 +200,11 @@ func generatePod(config *podConfig) *corev1.Pod {
 }
 
 func (s fusePodManagerService) DeleteFusePod(ctx context.Context, request *pb.DeleteFusePodRequest) (*pb.DeleteFusePodResponse, error) {
-    //TODO implement me
-    panic("implement me")
+    name := podName(request.Name)
+    klog.Infof("deleting fuse pod %s", name)
+    err := s.podClient.Delete(ctx, name, metav1.DeleteOptions{})
+    if err != nil {
+        return nil, status.Errorf(codes.Internal, "deleting pod %s: %s", request.Name, err)
+    }
+    return &pb.DeleteFusePodResponse{}, nil
 }

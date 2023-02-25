@@ -7,6 +7,18 @@ images:
 - digest: sha256:29a77e2d87fdc0754bf840171d3855609c8bef6e0d9cc861925ddbcd5658234b
   name: fuse-pod-manager
   newName: localhost:5000/hown3d/s3-csi/fuse-pod-manager-62df30a06f109ecae59dbd298f763fd3
-- digest: sha256:7b8830e55d203e359ffe5d898b319aa2f54358470f4980c824eee506bff8137d
+- digest: sha256:af44957e7336114104a75192c7d318053e402dd133c6459a25acf26e2b7bbc8b
   name: ghcr.io/hown3d/s3-csi/fuse-pod-manager
   newName: localhost:5000/hown3d/s3-csi/fuse-pod-manager-13dda0619dff72f8be102b562a53e736
+
+patches:
+- patch: |-
+    - op: replace
+      path: "/spec/type"
+      value: "NodePort"
+    - op: add
+      path: "/spec/ports/0/nodePort"
+      value: 30090
+  target:
+    kind: Service
+    name: fuse-pod-manager
