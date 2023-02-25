@@ -2,15 +2,15 @@ package main
 
 import (
     "flag"
-    "github.com/hown3d/s3-csi/internal/server"
+    "github.com/hown3d/s3-csi/internal/csi"
     "log"
 )
 
 func main() {
-    cfg := server.Config{}
+    cfg := csi.Config{}
     flag.StringVar(&cfg.UnixSocketPath, "socket", "/tmp/csi.sock", "unix socket to bind")
 
-    s, err := server.NewServer(&cfg)
+    s, err := csi.NewServer(&cfg)
     if err != nil {
         log.Fatal(err)
     }

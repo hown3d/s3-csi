@@ -1,4 +1,4 @@
-package server
+package csi
 
 import (
     "context"

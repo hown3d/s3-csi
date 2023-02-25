@@ -45,7 +45,7 @@ func setFuseAttr(ctx context.Context, obj *s3.Object, out *fuse.Attr) syscall.Er
     if err != nil {
         var notFoundErr *s3.ErrObjectNotFound
         if errors.As(err, &notFoundErr) {
-            klog.V(5).Infof("%s: %s", "setFuseAttr", notFoundErr)
+            klog.Infof("%s: %s", "setFuseAttr", notFoundErr)
             return syscall.ENOENT
         }
         printError("setFuseAttr", err)

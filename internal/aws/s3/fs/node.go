@@ -77,7 +77,7 @@ func (s *s3Node) folderObjs(ctx context.Context, folderKey string) ([]*s3.Object
     listOpts := s3.ListOpts{
         Prefix: folderKey,
     }
-    klog.V(5).Infof("listing objects with prefix: %s", folderKey)
+    klog.Infof("listing objects with prefix: %s", folderKey)
     objs, err := s.client.ListObjects(ctx, s.bucketName, &listOpts)
     if err != nil {
         return nil, syscall.EINVAL
@@ -143,7 +143,7 @@ func (s *s3Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
     dirs := make([]fuse.DirEntry, 0, len(objs))
     for _, obj := range objs {
         if obj.Key == ROOT_KEY {
-            klog.V(5).Infof("skipping root object: %s", ROOT_KEY)
+            klog.Infof("skipping root object: %s", ROOT_KEY)
             continue
         }
         d := fuse.DirEntry{
@@ -151,7 +151,7 @@ func (s *s3Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
             Ino:  uniqueInode(obj.Key),
             Mode: keyToFileMode(obj.Key),
         }
-        klog.V(5).Infof("adding dir entry: %s", d)
+        klog.Infof("adding dir entry: %s", d)
         dirs = append(dirs, d)
     }
     return fs.NewListDirStream(dirs), 0
@@ -239,7 +239,7 @@ func (s *s3Node) Unlink(ctx context.Context, name string) syscall.Errno {
 
     childKey := s.key(name)
     obj := s.client.NewObject(s.bucketName, childKey)
-    klog.V(5).Infof("deleting object %s", childKey)
+    klog.Infof("deleting object %s", childKey)
     err := obj.Delete(ctx)
     if err != nil {
         var notFoundErr *s3.ErrObjectNotFound
@@ -258,7 +258,7 @@ func (s *s3Node) Rename(ctx context.Context, name string, newParent fs.InodeEmbe
 
     oldChildKey := s.key(name)
     newChildKey := s.key(newName)
-    klog.V(5).Infof("renaming object %s to %s", oldChildKey, newChildKey)
+    klog.Infof("renaming object %s to %s", oldChildKey, newChildKey)
     obj := s.client.NewObject(s.bucketName, oldChildKey)
     if err := obj.Move(ctx, newChildKey); err != nil {
         var notFoundErr *s3.ErrObjectNotFound
