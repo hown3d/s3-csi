@@ -5,12 +5,12 @@ go 1.19
 replace github.com/docker/docker => github.com/docker/docker v20.10.3-0.20221013203545-33ab36d6b304+incompatible // 22.06 branch
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.18.0
+	github.com/aws/aws-sdk-go-v2 v1.21.2
 	github.com/aws/aws-sdk-go-v2/config v1.18.25
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.67
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.33.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.19.0
-	github.com/aws/smithy-go v1.13.5
+	github.com/aws/smithy-go v1.15.0
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/hanwen/go-fuse/v2 v2.3.0
 	github.com/kubernetes-csi/csi-test/v5 v5.0.0
