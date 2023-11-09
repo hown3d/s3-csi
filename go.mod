@@ -1,6 +1,6 @@
 module github.com/hown3d/s3-csi
 
-go 1.19
+go 1.21
 
 replace github.com/docker/docker => github.com/docker/docker v20.10.3-0.20221013203545-33ab36d6b304+incompatible // 22.06 branch
 
