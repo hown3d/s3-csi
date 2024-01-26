@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.24.1
 	github.com/aws/aws-sdk-go-v2/config v1.26.5
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.15.13
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.48.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.48.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.7
 	github.com/aws/smithy-go v1.19.0
 	github.com/container-storage-interface/spec v1.9.0
