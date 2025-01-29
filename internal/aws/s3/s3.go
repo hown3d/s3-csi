@@ -1,19 +1,19 @@
 package s3
 
 import (
-    "github.com/aws/aws-sdk-go-v2/aws"
-    "github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/minio/minio-go/v7"
 )
 
 type Client struct {
-    s3Client *s3.Client
+	s3Client *minio.Client
 }
 
-func NewClient(cfg aws.Config, opts ...func(o *s3.Options)) *Client {
-    opts = append(opts, func(o *s3.Options) {
-        o.UsePathStyle = true
-    })
-    return &Client{
-        s3Client: s3.NewFromConfig(cfg, opts...),
-    }
+func NewClient(endpoint string, opts *minio.Options) (*Client, error) {
+	client, err := minio.New(endpoint, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		s3Client: client,
+	}, nil
 }
